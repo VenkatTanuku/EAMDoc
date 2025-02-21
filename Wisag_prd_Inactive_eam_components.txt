@@ -1,0 +1,115 @@
+---Cancel PPM WO for DHL Alert
+
+update top (75) R5EVENTS
+set EVT_STATUS='CANC',
+EVT_RSTATUS='C' ,
+evt_completed = getdate() 
+where evt_org = 'DHL'
+and EVT_RSTATUS = 'A'
+and EVT_TYPE in ('PPM')
+
+
+---Reset PO Sequence  Alert 
+
+ALTER   PROCEDURE [dbo].[WG_SETPOSEQ] 
+AS
+BEGIN
+  Declare @SYear NVARCHAR(100)
+  --check  year is cureent year 
+  SET  @SYear= cast(YEAR(GETDATE()) as NVARCHAR(100)) 
+  --SET @sYear = '2022'
+  BEGIN
+  --if current year is not exist then update.
+  IF NOT EXISTS (SELECT 1 FROM R5INSTALL WHERE ins_code = 'SPF_PORD' AND ins_desc =@SYear + '/')
+	 BEGIN
+     --Print 'Update '
+     --Print @SYear 
+     -- Delete existing records for Sequence 
+	   DELETE from  SEQ_S5ORDER
+     -- Reset Sequence 
+     DBCC CHECKIDENT('SEQ_S5ORDER', RESEED, 10000);
+     -- Update Prefix for PO 
+	   UPDATE r5install
+     SET ins_desc = @SYear + '/'
+     WHERE ins_code = 'SPF_PORD'    
+	 END
+  END
+END
+
+
+
+---Clean tablet record	--Scheduled Database JOB
+
+SELECT @sdesc =  UPPER(ins_desc)    
+  FROM   r5install   
+  WHERE  ins_code = 'CLTBLTRD'  
+  --IF value in yes y then delete records.  
+  IF @sdesc IN('YES','Y')  
+  BEGIN  
+    DELETE FROM r5devices  
+    WHERE   dev_type IN ('ATAB','TAB','IPAD','APHN','IPHN')  
+  END    
+END 
+
+
+---external_wspsie	--Extensible Framework
+
+/***MCT REV 0.0.1 DATE : 20180125 created LOV on udfchar03 || return value_desc to udfchar02
+ *** Task : WSG_387
+***/
+
+
+Ext.define('EAM.custom.external_wspsie', {
+	extend : 'EAM.custom.AbstractExtensibleFramework',
+	getSelectors : function () {
+		return {
+			'[extensibleFramework] [tabName=PPA]' : {
+				afterrender : function () {
+					EAM.Utils.debugMessage('afterrender function Called');
+					var formPanel = this.getFormPanel();
+					setAttachToLOV(formPanel);
+				},
+				afterrecordchange : function () {
+					EAM.Utils.debugMessage('afterrecordchange function Called');
+					var formPanel = this.getFormPanel();
+					setAttachToLOV(formPanel);
+				}
+			}
+
+		}
+	}
+});
+
+/*------------------------External Functions Defined Here------*/
+
+function setAttachToLOV(pformpanel) {
+	
+	
+	var field = pformpanel.getFld("udfchar03");
+	var vOrg = pformpanel.getFldValue("organization");
+	EAM.Utils.debugMessage("Organization Value: "+ vOrg );
+	var vLookUpLov = {
+		lovName : "LVWGOBJTYPS",
+		inputVars: {
+			"param.org" : vOrg
+		},
+		
+		returnFields : {
+			udfchar03 : "equipmentno",
+			udfchar02 : "equipmentdesc"
+		}
+	};
+	var vValidateLov = {
+		lovName : "LVWGOBJTYPS",
+		inputVars: {
+			"param.org" : vOrg
+		},
+		
+		returnFields : {
+			udfchar03 : "equipmentno",
+			udfchar02 : "equipmentdesc"
+		}
+	};
+	field.lookupLOV = vLookUpLov;
+	field.validateLOV = vValidateLov;
+};
